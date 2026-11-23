@@ -1,6 +1,11 @@
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 # <HINT> Import any new Models here
+from django.shortcuts import render, get_object_or_404
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+from .models import Course, Enrollment, Question, Choice, Submission
+
 from .models import Course, Enrollment
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, render, redirect
@@ -131,6 +136,40 @@ def enroll(request, course_id):
         # For each selected choice, check if it is a correct answer or not
         # Calculate the total score
 #def show_exam_result(request, course_id, submission_id):
+def extract_answers(request):
+    submitted_answers = []
+    for key in request.POST:
+        if key.startswith('choice'):
+            submitted_answers.append(int(request.POST[key]))
+    return submitted_answers
+
+
+def submit(request, course_id):
+    course = get_object_or_404(Course, pk=course_id)
+    enrollment = Enrollment.objects.get(user=request.user, course=course)
+    submission = Submission.objects.create(enrollment=enrollment)
+    submission.choices.set(extract_answers(request))
+    return HttpResponseRedirect(
+        reverse('onlinecourse:show_exam_result', args=(course.id, submission.id)))
+
+
+def show_exam_result(request, course_id, submission_id):
+    course = get_object_or_404(Course, pk=course_id)
+    submission = get_object_or_404(Submission, pk=submission_id)
+    selected_ids = [choice.id for choice in submission.choices.all()]
+    total, max_score = 0, 0
+    for question in course.question_set.all():
+        max_score += question.grade
+        if question.is_get_score(selected_ids):
+            total += question.grade
+    grade = round(total / max_score * 100) if max_score else 0
+    context = {
+        'course': course,
+        'selected_ids': selected_ids,
+        'grade': grade,
+        'passed': grade >= 80,
+    }
+    return render(request, 'onlinecourse/exam_result_bootstrap.html', context)
 
 
 
